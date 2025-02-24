@@ -17,6 +17,10 @@ os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 # Initialize Gemini
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 class DigiFabsterAgent:
     def __init__(self):
         self.generation_config = {
