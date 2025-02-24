@@ -1,7 +1,7 @@
 import streamlit as st
-from langchain.chat_models import ChatOpenAI
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
+from langchain_community.chat_models import ChatOpenAI
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
 import google.generativeai as genai
 import os
 from typing import Dict
@@ -17,10 +17,6 @@ os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 # Initialize Gemini
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-
 class DigiFabsterAgent:
     def __init__(self):
         self.generation_config = {
@@ -34,10 +30,16 @@ class DigiFabsterAgent:
             model_name="gemini-2.0-pro-exp-02-05",
             generation_config=self.generation_config
         )
-        self.vector_store = Chroma(
-            embedding_function=OpenAIEmbeddings(),
-            persist_directory="./vector_store"
-        )
+        
+        # Initialize FAISS vector store
+        self.embeddings = OpenAIEmbeddings()
+        if os.path.exists("faiss_index"):
+            self.vector_store = FAISS.load_local("faiss_index", self.embeddings)
+        else:
+            self.vector_store = FAISS.from_texts(
+                ["Initial empty index"], 
+                self.embeddings
+            )
         
     def process_pdf(self, file) -> Dict:
         # Save uploaded file to temporary location
@@ -80,7 +82,8 @@ class DigiFabsterAgent:
                 texts=[response.text],
                 metadatas=[{"source": file.name, "type": "pricing_specs"}]
             )
-
+            self.vector_store.save_local("faiss_index")  # Save after adding new data
+            
             return {"text": response.text}
 
         finally:
