@@ -34,7 +34,7 @@ class DigiFabsterAgent:
         # Initialize FAISS vector store
         self.embeddings = OpenAIEmbeddings()
         if os.path.exists("faiss_index"):
-            self.vector_store = FAISS.load_local("faiss_index", self.embeddings)
+            self.vector_store = FAISS.load_local("faiss_index", self.embeddings, allow_dangerous_deserialization=True)
         else:
             self.vector_store = FAISS.from_texts(
                 ["Initial empty index"], 
