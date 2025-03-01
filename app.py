@@ -8,6 +8,8 @@ from typing import Dict
 import json
 import time
 from pathlib import Path
+from pydantic import BaseModel
+from typing import List
 import tempfile
 
 # Configure API keys
@@ -17,6 +19,13 @@ os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 # Initialize Gemini
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
+class DocumentAnalysis(BaseModel):
+    text_summary: str
+    materials: List[str]
+    post_production: List[str]
+    machines: List[str]
+
+
 class DigiFabsterAgent:
     def __init__(self):
         self.generation_config = {
@@ -24,7 +33,8 @@ class DigiFabsterAgent:
             "top_p": 0.95,
             "top_k": 64,
             "max_output_tokens": 8192,
-            "response_mime_type": "text/plain",
+            "response_mime_type": "application/json",
+            "response_schema": DocumentAnalysis
         }
         self.model = genai.GenerativeModel(
             model_name="gemini-2.0-pro-exp-02-05",
@@ -66,16 +76,41 @@ class DigiFabsterAgent:
             
             prompt = """
             Analyze this document and give a summary of what's there.
-            I need:
-                1. Pricing information (including quantities and prices)
-                2. Material specifications
-                3. Manufacturing specifications (tolerances, finishes, etc.)
-                4. Any mentioned machines or manufacturing processes
+
+            1. Text summary
+                - Pricing information (including quantities and prices)
+                - Material specifications
+                - Manufacturing specifications (tolerances, finishes, etc.)
+                - Any mentioned machines or manufacturing processes
+
+            2. List of materials
+            3. List of post-production processes
+            4. List of machines
             
             Provide a clear, structured summary of each category.
             """
 
             response = chat.send_message([gemini_file, prompt])
+            
+            # Parse the response into DocumentAnalysis
+            try:
+                # First try to parse as JSON directly
+                analysis_data = response.candidates[0].content.parts[0].function_response.outputs
+                analysis = DocumentAnalysis(**analysis_data)
+            except (AttributeError, KeyError, TypeError):
+                # If direct JSON parsing fails, try to extract from text
+                try:
+                    # Try to parse the text as JSON
+                    analysis_data = json.loads(response.text)
+                    analysis = DocumentAnalysis(**analysis_data)
+                except json.JSONDecodeError:
+                    # Fallback: Create a basic structure from the text
+                    analysis = DocumentAnalysis(
+                        text_summary=response.text,
+                        materials=[],
+                        post_production=[],
+                        machines=[]
+                    )
             
             # Store in vector database
             self.vector_store.add_texts(
@@ -84,7 +119,10 @@ class DigiFabsterAgent:
             )
             self.vector_store.save_local("faiss_index")  # Save after adding new data
             
-            return {"text": response.text}
+            return {
+                "raw_text": response.text,
+                "structured_data": analysis.model_dump()
+            }
 
         finally:
             # Clean up temporary file
@@ -139,7 +177,12 @@ def main():
                     result = st.session_state.agent.process_pdf(file)
                     st.success(f"Successfully processed {file.name}")
                     with st.expander("View extracted data"):
-                        st.json(result)
+                        # Display structured data in a more readable format
+                        st.subheader("Summary")
+                        st.write(result["structured_data"]["text_summary"])
+
+                        st.subheader("Raw JSON")
+                        st.write(result)
                 except Exception as e:
                     st.error(f"Error processing {file.name}: {str(e)}")
 
