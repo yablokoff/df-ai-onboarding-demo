@@ -4,7 +4,7 @@ from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 import google.generativeai as genai
 import os
-from typing import Dict
+from typing import Dict, Optional
 import json
 import time
 from pathlib import Path
@@ -19,12 +19,16 @@ os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 # Initialize Gemini
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
+class MaterialSpec(BaseModel):
+    name: str
+    specifications: Optional[List[str]]
+    post_production: Optional[List[str]]
+
 class DocumentAnalysis(BaseModel):
     text_summary: str
-    materials: List[str]
-    post_production: List[str]
+    materials: List[MaterialSpec]
+    post_production: List[str]  # General post-production options not tied to specific materials
     machines: List[str]
-
 
 class DigiFabsterAgent:
     def __init__(self):
@@ -84,8 +88,13 @@ class DigiFabsterAgent:
                 - Any mentioned machines or manufacturing processes
 
             2. List of materials
+                - Name
+                - Specifications
+                - Post-production processes that can be applied to this material
             3. List of post-production processes
+                - General post-production processes that can be applied to any material
             4. List of machines
+                - Machines that can be used to manufacture with the materials
             
             Provide a clear, structured summary of each category.
             """
